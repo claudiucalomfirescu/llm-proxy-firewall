@@ -28,7 +28,7 @@ answering the agent in the LLM's place.
 **Animated explainer:** [explainers/index.html](explainers/index.html) · [published](https://claude.ai/artifact/9B6TSTeeKKVG2z3yT3fYYN)
 
 ## What it is
-Everything [llm-proxy-log](../llm-proxy-log/) does (agents change only their base URL; the proxy
+Everything [llm-proxy-log](https://github.com/claudiucalomfirescu/llm-proxy-log/blob/main/) does (agents change only their base URL; the proxy
 holds the key and logs every call to SQLite), plus a firewall. For every chat completion it reads
 what the agent sends and what the LLM answers, against a policy written in YAML:
 
@@ -98,7 +98,7 @@ The code is one rendering of the specification; [`blueprint/`](blueprint/) is th
 To regenerate the project, give a coding model the `blueprint/` folder and the **P-REBUILD**
 prompt from PROMPTS.md, then run **P-VERIFY**. The tests in `tests/` cite the requirement ids
 they prove and `demo/data/` holds recorded traffic, so you can tell whether the rebuild behaves
-like this one. The method behind it is [Prax Systems](../prax-systems/README.md).
+like this one. The method behind it is [Prax Systems](https://github.com/claudiucalomfirescu/prax-systems/blob/main/README.md).
 
 ## Tests
 ```bash
