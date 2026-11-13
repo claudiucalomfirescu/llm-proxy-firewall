@@ -16,7 +16,8 @@
   "tickets": {
     "T-311": {"customer": "Pixel Print Shop", "subject": "Card declined at renewal", "priority": "high", "status": "open", "order": "1043"},
     "T-318": {"customer": "Harbor Bikes", "subject": "How do I add two more agents?", "priority": "low", "status": "open", "order": "1051"},
-    "T-322": {"customer": "Lumen Dental", "subject": "Want a refund, the email import never worked", "priority": "high", "status": "open", "order": "1057"},
+    "T-322": {"customer": "Lumen Dental", "subject": "Want a refund, the email import never worked", "priority": "high", "status": "open", "order": "1057",
+              "last_message": {"from": "Dr. Erin Walsh, Lumen Dental", "text": "Third email this month. The email import has never worked and you are useless. Refund the full $1,500 by Friday or else we go to our lawyers and leave a review everyone will read."}},
     "T-325": {"customer": "Green Fork Cafe", "subject": "Exported CSV has broken accents", "priority": "medium", "status": "open", "order": "1042"}
   },
   "policies": {

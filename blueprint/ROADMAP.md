@@ -11,7 +11,8 @@ Status: ✅ done · 🔜 in progress · ⏳ planned · 💤 parked
 | M5 · Generic policy file, organisation in the prompt, optional grounding, LLM caps | R-217…R-219 | ✅ 2026-10-30 |
 | M6 · Dashboard firewall view, demo with incidents, K-log-schema@2 fixture | R-230, R-231, R-242, R-243 | ✅ 2026-10-30 |
 | M7 · Prax Systems Silver | docs, explainer | ✅ 2026-10-30 |
-| M8 · Published as its own GitHub repo | — | ⏳ waits for the user |
+| M8 · Published as its own GitHub repo | — | ✅ 2026-11-01 |
+| M8b · Received text never blocks on its own; spend cap since start; judge bake-off; demo re-recorded on the free model | R-220, R-023 | ✅ 2026-11-13 |
 | M9 · Evaluation harness: replay a labelled log through the current rules and report precision/recall | — | ⏳ (exists in the learning project as runner/refirewall.py + evaluate.py) |
 
 ## Next

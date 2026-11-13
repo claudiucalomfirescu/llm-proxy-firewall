@@ -1,7 +1,7 @@
 # Specification · llm-proxy-firewall
 
 > Source of truth. If a behaviour is not here, a rebuild may drop it.
-> Version: 1.0 · Contracts provided: K-log-schema@2, K-firewall-rules@1 · Contracts used: K-openai-chat@1, K-agent-headers@1, K-log-schema@1
+> Version: 1.1 · Contracts provided: K-log-schema@2, K-firewall-rules@1 · Contracts used: K-openai-chat@1, K-agent-headers@1, K-log-schema@1
 >
 > This repo is a standalone copy of llm-proxy-log plus a firewall. Sections 1–4 up to "Demo" repeat
 > llm-proxy-log's spec (same R-ids, same tests); the firewall adds §3 K-log-schema@2, K-firewall-rules@1,
@@ -23,6 +23,7 @@
 | Firewall | The part of the proxy that reads every chat completion in both directions and decides a level. |
 | Topic | A kind of policy breach (customer data leak, credential sharing…) defined in the topics file. |
 | Rule | A regex test inside a topic: `any:` (keyword) or `all:` (co-occurrence, "intent heuristic"). |
+| Received text | Tool results the agent reads in a request (a customer's email, a ticket, a document): written by someone else, not by the person the session belongs to. |
 | Signal | One finding: session, turn, direction, level, topic, detector, what matched. One row in `signals`. |
 | Level | `info` (noted), `warning` (noted, forwarded, header), `block` (not forwarded; proxy answers). |
 | Intent check | An LLM classifier asked whenever a rule fired at warning/block (and on any request-side finding); reads topic and the author's stance. |
@@ -254,7 +255,7 @@ Environment: `OPENROUTER_API_KEY` (required), `UPSTREAM_BASE_URL` (default
 | R-020 | Free-model calls MUST wait for a slot in a sliding 60 s window (`GATEWAY_FREE_RPM`), giving up after `GATEWAY_MAX_WAIT_S`. | `test_R020_*` |
 | R-021 | A per-minute 429 or a 502/503 MUST be retried on the same model with exponential backoff. | `test_R021_*` |
 | R-022 | When the free daily cap is reached (429 per-day, or `GET /key` shows none left), calls MUST move to the fallback model for the rest of the UTC day. A free-model call that times out (`GATEWAY_FREE_TIMEOUT_S`, default 90) or answers 504 MUST go to the fallback model at once, without retries. | `test_R022_*` |
-| R-023 | Fallback calls MUST be refused with a 429 (`metadata.gateway = "spend_cap"`) once spend reaches `GATEWAY_SPEND_CAP_USD`. | `test_R023_*` |
+| R-023 | Fallback calls MUST be refused with a 429 (`metadata.gateway = "spend_cap"`) once spend reaches `GATEWAY_SPEND_CAP_USD`. Spend is the local ledger or the key's usage since the proxy started (`GET /key`), whichever is higher; usage from before the start does not count. | `test_R023_*` |
 | R-024 | Successful replies MUST be cached by request hash; `GATEWAY_CACHE=replay` serves hits, `strict` refuses misses with a 504. | `test_R024_*` |
 | R-025 | `GET /v1/gateway/status` MUST report models, free budget, spend and cache, and calls MUST record their `route`. | `test_R025_*` |
 
@@ -281,10 +282,10 @@ Environment: `OPENROUTER_API_KEY` (required), `UPSTREAM_BASE_URL` (default
 |---|---|---|
 | R-201 | Each topic's rules MUST give the expected level on the crafted messages (none, info, warning, block for every topic). | `test_R201_*` |
 | R-202 | The firewall MUST inspect only what is new in a request (user and tool messages after the last assistant message), never the system prompt or earlier turns. | `test_R202_*` |
-| R-203 | Tool results MUST be inspected like user messages. | `test_R203_*` |
+| R-203 | Tool results MUST be inspected with the same rules as user messages (a hard rule in one still blocks). | `test_R203_*` |
 | R-204 | `warnings_to_block` warnings on one topic in one session MUST block the session (detector `escalation`). | `test_R204_*` |
 | R-205 | When a rule fires at warning or block (or on any request-side finding), the LLM intent check MUST be asked; it can raise the level; verdicts are cached by text; its prompt names the organisation from the topics file. | `test_R205_*` |
-| R-206 | The LLM MAY lower co-occurrence findings it is confident are harmless and findings in text whose author refuses or reports, down to info; it MUST NOT lower request-side keyword findings or `hard` rules. | `test_R206_*` |
+| R-206 | The LLM MAY lower co-occurrence findings it is confident are harmless and findings in text whose author refuses or reports, down to info; it MUST NOT lower keyword findings in the person's own words or `hard` rules. | `test_R206_*` |
 | R-207 | `FIREWALL_INTENT=heuristic` (or off) MUST skip the LLM entirely. | `test_R207_*` |
 | R-208 | Blocked sessions MUST stay blocked across a proxy restart (rebuilt from `admin_actions`) until unblocked. | `test_R208_*` |
 | R-209 | On block, the request MUST NOT reach the provider; the agent MUST get an ordinary chat completion with the block message and reference; every later request of that session MUST get the same treatment. | `test_R209_*` |
@@ -297,6 +298,7 @@ Environment: `OPENROUTER_API_KEY` (required), `UPSTREAM_BASE_URL` (default
 | R-216 | Agents in `FIREWALL_EXEMPT_AGENTS` MUST NOT be inspected (and need the admin token when one is set). | `test_R216_*` |
 | R-217 | The grounding layer (approval claims checked against tool results) MUST run only when the topics file has a `grounding:` section. | `test_R217_*` |
 | R-218 | The topics file MUST be replaceable (`FIREWALL_TOPICS`) without code changes. | `test_R218_*` |
+| R-220 | Received text MUST NOT block on its own: its findings (rules and LLM verdict) are capped at warning unless a `hard` rule fired, carry a rationale saying so, and do not count towards `warnings_to_block`. The intent check is told who wrote the text (the person, someone else's text the agent reads, or the LLM). |
 | R-219 | A topic's `llm_max_level` MUST cap the level the LLM check alone can give it; rules still decide above it. | `test_R219_*` |
 | R-230 | The dashboard MUST serve `/api/signals` and `/api/actions`. | `test_R230_*` |
 | R-231 | The dashboard MUST show firewall levels on sessions and calls, flagged/blocked counts, the findings table, and the findings of an open session. | manual: demo/DEMO.md steps 3–5 |

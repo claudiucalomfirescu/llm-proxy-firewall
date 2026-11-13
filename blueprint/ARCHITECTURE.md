@@ -24,11 +24,20 @@ flowchart LR
 ### The four detection layers (cheapest first)
 | Layer | Detector | What it does | Can it be overruled? |
 |---|---|---|---|
-| 1 | `keyword` | an `any:` rule: one regex matches | request side: never; response side: lowered if the LLM sees a refusal or report |
+| 1 | `keyword` | an `any:` rule: one regex matches | in the person's own words: never; in received text or a response: lowered if the LLM sees a refusal or report |
 | 2 | `intent_heuristic` | an `all:` rule: several ideas co-occur ("customers" + "emails" + "my gmail") | the LLM can lower it to info when confident it is harmless |
 | 3 | `intent_llm` | the classifier reads topic and stance; runs only when layer 1–2 fired | capped by the topic's `llm_max_level` |
 | 4 | `grounding` | optional: "the manager approved it" must match an approval record in tool results | no |
 Plus `escalation` (3 warnings on one topic in one session) and `session` (already blocked).
+
+### Own words and received text
+A request is inspected in two parts, each scanned and judged on its own: the person's own words (user
+messages) and **received text** (tool results: a customer's email, a ticket, a web page). Received
+text is flagged like anything else, but never blocks on its own (only a `hard` rule can), and its
+warnings do not escalate (R-220). The firewall stops whoever does the forbidden thing, not whoever
+reads it: an angry customer writing "refund us or else" in a ticket is a warning on the support lead's
+session, not a closed session. If the agent then acts on what it read (sends the data out, writes the
+threat), the response side sees that act and can block it.
 
 ### One blocked request, step by step
 1. Maya's dev-assistant sends "The staging IMAP password is Leaf!2026dev…".
@@ -59,7 +68,8 @@ an LRU cache of intent verdicts (2,000 texts).
 |---|---|
 | R-001…R-043, R-100…R-103 | as in llm-proxy-log (`proxy/proxy.py`, `logstore.py`, `gateway.py`, `dashboard/`, `demo/`) |
 | R-201, R-218 | `proxy/firewall.py: load_topics, Firewall.scan`; `proxy/firewall_topics.yaml` |
-| R-202, R-203 | `proxy/firewall.py: request_text, response_text` |
+| R-202, R-203 | `proxy/firewall.py: request_parts, response_text` |
+| R-220 | `proxy/firewall.py: Firewall._findings` (received cap), `_decide` (escalation skips received), `AUTHORS` |
 | R-204 | `proxy/firewall.py: Firewall._decide` (warning counter) |
 | R-205, R-206, R-219 | `proxy/firewall.py: classify, _apply_verdict, _lowerable, _parse_verdict` |
 | R-207 | `proxy/firewall.py: _use_llm` |

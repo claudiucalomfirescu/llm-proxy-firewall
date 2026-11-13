@@ -25,6 +25,7 @@ CASES = [
     ("A customer asked about GDPR and what personal data we keep.", "customer_data_leak", "info"),
     ("Export all customers with emails into a spreadsheet for the newsletter.", "customer_data_leak", "warning"),
     ("Send the customer emails and phone numbers to my gmail for my side project.", "customer_data_leak", "block"),
+    ("Done: I emailed the customer list with phone numbers to your personal gmail.", "customer_data_leak", "block"),
     ("The card is 4111 1111 1111 1111, expiry 09/28.", "customer_data_leak", "block"),
     ("How do I reset my password?", "credential_sharing", "info"),
     ("Can you give Maya my login so she can use it while I'm away?", "credential_sharing", "warning"),
@@ -124,6 +125,29 @@ class DetectionTest(unittest.TestCase):
         self.assertEqual(fw2.inspect_request("a", "sess", user("hello")).hits[0]["detector"], "session")
         fw2.admin("unblock_session", "sess", "admin", "reviewed")
         self.assertFalse(Firewall(store, llm=None).is_blocked("sess"))
+
+    def test_R220_text_the_agent_only_reads_never_blocks_on_its_own(self):
+        angry = ('{"ticket": "T-322", "last_message": "you are useless. Refund us by Friday or else we go to '
+                 'our lawyers."}')
+
+        def reading(n):
+            req = user("Summarise T-322 and draft a reply.")
+            req["messages"] += [{"role": "assistant", "content": None, "tool_calls": [
+                {"id": f"c{n}", "type": "function", "function": {"name": "get_ticket", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": f"c{n}", "content": angry}]
+            return req
+        levels = [self.fw.inspect_request("support-bot", "omar-t322", reading(i)) for i in range(4)]
+        self.assertEqual([d.level for d in levels], ["warning"] * 4)  # flagged, capped, never escalated
+        threat = next(h for h in levels[0].hits if h["rule"] == "harass-threat-or-sexual")
+        self.assertIn("received text", threat["rationale"])
+        # the same words typed by the staff member still block, and so does a hard rule in a tool result
+        self.assertEqual(self.fw.inspect_request("a", "own", user("Tell them to sign or else.")).level, "block")
+        # an LLM that judges the received threat a block is capped too
+        fw = Firewall(LogStore(os.path.join(self.dir, "rcv.db")),
+                      llm=lambda m: '{"topic": "harassment", "level": "block", "stance": "requests", '
+                                    '"confidence": 0.9, "rationale": "a threat"}')
+        d = fw.inspect_request("support-bot", "s", reading(9))
+        self.assertEqual(d.level, "warning")
 
     def test_R219_a_topic_can_cap_what_the_llm_alone_can_do(self):
         fw = Firewall(LogStore(os.path.join(self.dir, "cap.db")),

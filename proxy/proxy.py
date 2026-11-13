@@ -47,7 +47,7 @@ import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from firewall import Firewall
+from firewall import Firewall, top
 from gateway import Gateway
 from logstore import LogStore
 
@@ -254,7 +254,7 @@ class Handler(BaseHTTPRequestHandler):
             if d.blocked:
                 status, resp_headers, data = FIREWALL.block_completion(req, d)
                 meta["route"] = "firewall-response"
-        level = max((d.level for d in decisions if d.level), key=["info", "warning", "block"].index, default=None)
+        level = top(d.level for d in decisions)
         if level and level != "block" and os.environ.get("FIREWALL_DISCLOSE", "on").lower() in ON:
             resp_headers = list(resp_headers) + [("X-Firewall", level)]
 

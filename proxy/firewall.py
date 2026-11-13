@@ -1,9 +1,8 @@
 """Deep session inspection: the proxy reads every conversation and can answer in the LLM's place.
 
-Lesson 8 (sensitive topics) is the detection half, lesson 9 (proxy firewall) the enforcement half.
-
 For each chat completion the proxy calls:
-  inspect_request(...)   on what the agent is about to send (the new user/tool messages of this turn)
+  inspect_request(...)   on what the agent is about to send this turn, in two parts: the person's own
+                         words (user messages) and what the agent is reading (tool results)
   inspect_response(...)  on what the LLM answered (assistant text and tool-call arguments)
 Each returns a Decision with a level (None / info / warning / block) and the findings ("hits").
 
@@ -15,15 +14,18 @@ Detection runs in four layers, cheapest first:
                       gateway on the free model when the minute has room, otherwise on the cheap paid
                       model (proxy.py decides). It reads the stance as well as the topic: an agent
                       that refuses, warns against or reports a bad request is not doing it.
-  4. grounding        response side only: a claim that a manager approved something must match an
-                      approved record in the tool results of the same conversation (detector
-                      "grounding", topic unsupported_claim). Words cannot tell a true claim from a lie;
-                      the system of record can.
+  4. grounding        response side only, and only if the topics file has a `grounding:` section: a
+                      claim that a manager approved something must match an approved record in the
+                      tool results of the same conversation (detector "grounding"). Words cannot tell a
+                      true claim from a lie; the system of record can.
 The final level is the highest one any layer gives. The LLM can raise a level. It can lower a layer-2
-finding it is confident is harmless, and any finding in a refusal (a response, or a message the agent
-is reading), down to info. It never lowers a request-side keyword finding or a rule marked `hard`
-(a password in clear text leaks whatever the stance). If no LLM answer comes back, a refusal regex
-stands in for it on layer-2 findings.
+finding it is confident is harmless, and any finding in text whose author refuses or reports, down to
+info. It never lowers a keyword the person typed themselves or a rule marked `hard` (a password in
+clear text leaks whatever the stance). If no LLM answer comes back, a refusal regex stands in for it on
+layer-2 findings.
+Text the agent is only reading (tool results: a customer's angry email, a phishing message) is flagged
+but never blocks on its own, except by a `hard` rule: the firewall stops whoever does the forbidden
+thing, not whoever receives it. Its warnings do not count towards escalation.
 A session that reaches `warnings_to_block` warnings on one topic is blocked (detector "escalation");
 only warnings still standing after layer 3 count.
 
@@ -66,6 +68,11 @@ REFUSAL = re.compile(
     r"|not (allowed|permitted) to|against (company |our |the )?(policy|rules)|(don'?t|do not|never|shouldn'?t|should not)"
     r" (share|use|send|give|pass on|lend)|logins? (is|are) personal|i (declined|refused)|refus(e|ed|ing) to"
     r"|no legitimate (way|route))", re.I)
+# Who wrote the text the classifier reads, by source.
+AUTHORS = {"request": "the staff member, writing to their AI assistant",
+           "received": "someone else: a tool result (an email, ticket, chat, document or record) that the staff "
+                       "member's AI assistant is reading",
+           "response": "the AI assistant answering the staff member"}
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -92,13 +99,20 @@ def _content_text(content):
     return content or ""
 
 
-def request_text(req):
-    """The part of a request that is new this turn: user/tool messages after the last assistant
-    message. The system prompt is skipped (a persona prompt may describe its own risks), and older
-    turns were already inspected when they were new."""
+def request_parts(req):
+    """The part of a request that is new this turn (user/tool messages after the last assistant
+    message), as (own words, received text): what the person typed, and the tool results the agent is
+    reading (a customer's email, a document, a search result). The system prompt is skipped (a persona
+    prompt may describe its own risks), and older turns were already inspected when they were new."""
     msgs = req.get("messages") or []
     last = max((i for i, m in enumerate(msgs) if m.get("role") == "assistant"), default=-1)
-    return "\n".join(_content_text(m.get("content")) for m in msgs[last + 1:] if m.get("role") in ("user", "tool"))
+    new = msgs[last + 1:]
+    return tuple("\n".join(_content_text(m.get("content")) for m in new if m.get("role") == role)
+                 for role in ("user", "tool"))
+
+
+def request_text(req):
+    return "\n".join(p for p in request_parts(req) if p)
 
 
 def response_text(resp):
@@ -199,17 +213,16 @@ class Firewall:
     def _use_llm(self):
         return self.llm is not None and self.intent_mode not in ("off", "heuristic")
 
-    def classify(self, text, candidates, direction="request"):
+    def classify(self, text, candidates, source="request"):
         """Layer 3: ask the LLM which topic (if any) the text's intent matches, and the author's stance.
-        Cached by text."""
-        key = hashlib.sha256((direction + "\0" + text).encode()).hexdigest()
+        Cached by text and source."""
+        key = hashlib.sha256((source + "\0" + text).encode()).hexdigest()
         if key in self.intent_cache:
             self.stats["intent_cache_hits"] += 1
             return self.intent_cache[key]
         topics = "\n".join(f"- {t['id']}: {' '.join(t['intent'].split())}" for t in self.topics.values()
                            if t.get("intent"))
-        author = ("the staff member (or a message, email or tool result their assistant is reading)"
-                  if direction == "request" else "the AI assistant answering the staff member")
+        author = AUTHORS[source]
         org = " ".join(str(self.cfg.get("organization") or "an organisation whose staff use AI assistants").split())
         system = (f"You are the compliance classifier of {org}. Read the TEXT, which is "
                   "part of a conversation between a staff member's AI assistant and the LLM. Its author is "
@@ -242,23 +255,42 @@ class Firewall:
             self.intent_cache.popitem(last=False)
         return result
 
-    def _decide(self, direction, agent, session, turn, text, evidence=("", ""), user=None):
-        d = Decision(direction, session, agent, turn, user=user)
-        d.hits = self.scan(text)
-        found = top(h["level"] for h in d.hits)
+    def _findings(self, text, source):
+        """Layers 1-3 on one piece of text. source: request (the person's own words), received (tool
+        results the agent is reading) or response (the LLM's answer)."""
+        hits = self.scan(text)
+        found = top(h["level"] for h in hits)
         # The LLM is asked before anything is blocked or warned on, and on any request-side finding.
         # Info-only findings in responses are left alone: helpful answers mention discounts all the time.
-        if found and (direction == "request" or RANK[found] >= RANK["warning"]):
-            v = self.classify(text, {h["topic"] for h in d.hits}, direction) if self._use_llm() else None
+        if found and (source != "response" or RANK[found] >= RANK["warning"]):
+            v = self.classify(text, {h["topic"] for h in hits}, source) if self._use_llm() else None
             if v:
-                self._apply_verdict(d, v, text)
+                self._apply_verdict(hits, source, v, text)
             else:
                 self.stats["intent_llm_skipped" if not self._use_llm() else "intent_llm_unanswered"] += 1
-                self._refusal_fallback(d, text)
+                self._refusal_fallback(hits, text)
+        if source == "received":
+            # Someone else wrote it; the agent is only reading it (an angry customer's email, a phishing
+            # message). The firewall blocks whoever does the forbidden thing, not whoever receives it:
+            # flagged, never a block on its own (hard rules aside), and not counted towards escalation.
+            for h in hits:
+                h["received"] = True
+                if not h.get("hard") and RANK[h["level"]] > RANK["warning"]:
+                    h["rationale"] = f"lowered from block: received text (a tool result), not the person's own words. {h.get('rationale') or ''}".strip()
+                    h["level"] = "warning"
+                    self.stats["received_capped"] += 1
+        return hits
+
+    def _decide(self, direction, agent, session, turn, parts, evidence=("", ""), user=None):
+        """parts: [(text, source)]. Findings of every part, grounding on responses, then escalation."""
+        d = Decision(direction, session, agent, turn, user=user)
+        for text, source in parts:
+            if text.strip():
+                d.hits += self._findings(text, source)
         if direction == "response":
-            d.hits += self.ground(text, evidence)
+            d.hits += self.ground(parts[0][0], evidence)
         with self.lock:
-            for tid in {h["topic"] for h in d.hits if h["level"] == "warning"}:
+            for tid in {h["topic"] for h in d.hits if h["level"] == "warning" and not h.get("received")}:
                 self.warnings[(session, tid)] += 1
                 n = self.warnings[(session, tid)]
                 if n >= self.cfg.get("warnings_to_block", 3):
@@ -268,23 +300,23 @@ class Firewall:
         self._settle(d)
         return d
 
-    def _lowerable(self, d, h, benign):
-        """May the intent check lower this finding? Never a `hard` rule, never a request-side keyword
-        (the staff member typed it, or the agent is reading it), never a grounding finding (facts are not a matter of tone)."""
+    def _lowerable(self, source, h, benign):
+        """May the intent check lower this finding? Never a `hard` rule, never a keyword the person typed
+        themselves, never a grounding finding (facts are not a matter of tone)."""
         if h.get("hard") or h["detector"] not in ("keyword", "intent_heuristic") or h["level"] == "info":
             return False
         if h["detector"] == "intent_heuristic":
             return True
-        return benign and d.direction == "response"
+        return benign and source != "request"
 
-    def _apply_verdict(self, d, v, text):
+    def _apply_verdict(self, hits, source, v, text):
         """The LLM can raise the level (a paraphrase no rule catches). It lowers, down to info, findings in
         text whose author refuses or reports the request, and co-occurrence findings it is confident are
         harmless. A refusal leaves an info signal, so the console still shows the attempt."""
         sure = v["confidence"] >= DISMISS_CONFIDENCE
         benign = sure and v["stance"] in BENIGN_STANCES
-        for h in d.hits:
-            if not self._lowerable(d, h, benign):
+        for h in hits:
+            if not self._lowerable(source, h, benign):
                 continue
             harmless = sure and RANK[h["level"]] > max(RANK[v["level"]], 1) and v["topic"] in (h["topic"], "none")
             if benign or harmless:
@@ -293,9 +325,9 @@ class Firewall:
                 h["level"] = "info"
                 self.stats["dismissed"] += 1
         if benign:
-            topic = v["topic"] if v["topic"] in self.topics else (d.hits[0]["topic"] if d.hits else None)
+            topic = v["topic"] if v["topic"] in self.topics else (hits[0]["topic"] if hits else None)
             if topic:
-                d.hits.append({"topic": topic, "rule": f"llm-{v['stance']}", "level": "info",
+                hits.append({"topic": topic, "rule": f"llm-{v['stance']}", "level": "info",
                                "detector": "intent_llm", "matched": None, "rationale": v["rationale"],
                                "confidence": v["confidence"], "excerpt": _excerpt(text, 0, 0)})
         elif RANK[v["level"]] > 0:
@@ -303,16 +335,16 @@ class Firewall:
             # only a rule (a threat) blocks
             cap = (self.topics.get(v["topic"]) or {}).get("llm_max_level", "block")
             level = v["level"] if RANK[v["level"]] <= RANK[cap] else cap
-            d.hits.append({"topic": v["topic"], "rule": "llm-classifier", "level": level,
+            hits.append({"topic": v["topic"], "rule": "llm-classifier", "level": level,
                            "detector": "intent_llm", "matched": None, "rationale": v["rationale"],
                            "confidence": v["confidence"], "excerpt": _excerpt(text, 0, 0)})
 
-    def _refusal_fallback(self, d, text):
+    def _refusal_fallback(self, hits, text):
         """No LLM answer: a co-occurrence finding in text that reads as a refusal is lowered to info."""
         m = REFUSAL.search(text)
         if not m:
             return
-        for h in d.hits:
+        for h in hits:
             if h["detector"] == "intent_heuristic" and not h.get("hard") and h["level"] != "info":
                 h["rationale"] = f"lowered from {h['level']}: reads as a refusal (\"{m.group(0)}\"); no LLM check"
                 h["level"] = "info"
@@ -387,12 +419,13 @@ class Firewall:
                            "excerpt": _excerpt(request_text(req), 0, 0)})
             self.stats["block"] += 1
             return d
-        return self._decide("request", agent, session, turn, request_text(req), user=user)
+        own, received = request_parts(req)
+        return self._decide("request", agent, session, turn, [(own, "request"), (received, "received")], user=user)
 
     def inspect_response(self, agent, session, req, resp, user=None):
         if not isinstance(resp, dict) or "choices" not in resp:
             return Decision("response", session, agent, turn_of(req), user=user)
-        return self._decide("response", agent, session, turn_of(req), response_text(resp),
+        return self._decide("response", agent, session, turn_of(req), [(response_text(resp), "response")],
                             (tool_text(req), user_text(req)), user=user)
 
     def commit(self, d, call_id=None):

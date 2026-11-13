@@ -57,7 +57,7 @@ topics:
         all:
           - '\b(customers?|clients?|users?)\b'
           - '\b(phone|mobile|numbers?|address(es)?|e-?mails?|contact details|card)\b'
-          - '\b(send|sent|sending|give|giving|share|sharing|sell|selling|forward|upload|pass(ing)? (it |them )?(on|over)|hand(ing)? (it |them )?over)\b'
+          - '\b(send|sent|sending|e-?mailed|e-?mailing|mailed|give|giving|share|sharing|sell|selling|forward(ed|ing)?|upload(ed|ing)?|pass(ing)? (it |them )?(on|over)|hand(ing|ed)? (it |them )?over)\b'
           - '(outside|external|third[- ]party|broker|friend|\bmate\b|my (own|personal)|gmail|hotmail|dropbox|side (project|business)|for (a )?(fee|cash|commission)|per lead)'
       - id: pii-card-number
         level: block
@@ -118,8 +118,9 @@ topics:
     policy: Everyone is treated with respect; abusive, threatening or sexual messages are not acceptable.
     llm_max_level: warning   # rudeness is flagged; only the threat/sexual rule closes a session
     intent: >-
-      A message insults, demeans, threatens, intimidates or sexually harasses a colleague or customer,
-      or asks the assistant to write such a message.
+      Someone at Brightleaf insults, demeans, threatens, intimidates or sexually harasses a colleague
+      or a customer, or asks the assistant to write such a message. A customer or other outsider being
+      rude to Brightleaf, in an email or ticket the assistant is reading, is warning at most, never block.
     rules:
       - id: harass-rude
         level: info

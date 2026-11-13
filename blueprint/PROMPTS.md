@@ -184,21 +184,25 @@ admin_actions rows.
 
 ### P-09 · LLM intent check
 - **Goal:** an LLM classifier that raises, lowers or confirms rule findings by intent and stance.
-- **Delivers:** R-205, R-206, R-207, R-215, R-217, R-219
-- **Read first:** SPEC.md R-205…R-207, R-215, R-217, R-219
+- **Delivers:** R-205, R-206, R-207, R-215, R-217, R-219, R-220
+- **Read first:** SPEC.md R-205…R-207, R-215, R-217, R-219, R-220
 - **Done when:** `python3 -m unittest tests.test_firewall`
 
 ```text
 When a rule fired at warning or block, or on any request-side finding, ask llm(messages) (unless
-FIREWALL_INTENT is heuristic or off). System prompt: "You are the compliance classifier of
-<organization from the topics file>", the list of topics with their intent sentence, the author
-(staff member / message being read, or the AI assistant), stance definitions (requests, performs,
+FIREWALL_INTENT is heuristic or off). Inspect a request in two parts, each scanned and judged on its
+own: the person's own words (user messages) and received text (tool results). System prompt: "You are
+the compliance classifier of <organization from the topics file>", the list of topics with their
+intent sentence, the author (the staff member; someone else's text the assistant is reading; or the AI
+assistant), stance definitions (requests, performs,
 receives, refuses, reports, neutral), level definitions, and "Reply with JSON only: {topic, level,
 stance, confidence, rationale}". Parse the first JSON object in the answer; cache verdicts by
-(direction, text). The verdict can add an intent_llm hit at its level, capped by the topic's
+(source, text). The verdict can add an intent_llm hit at its level, capped by the topic's
 llm_max_level. With confidence >= 0.7 it lowers to info: any intent_heuristic hit it judges harmless,
-and, when the stance is refuses or reports, response-side keyword hits too; never request-side
-keyword hits or rules marked hard. Without an answer, a refusal regex ("I can't", "against policy"...)
+and, when the stance is refuses or reports, keyword hits in received text or responses too; never
+keyword hits in the person's own words or rules marked hard. Findings in received text are then capped
+at warning (hard rules aside), say so in their rationale, and do not count towards warnings_to_block:
+the firewall stops whoever does the forbidden thing, not whoever reads it. Without an answer, a refusal regex ("I can't", "against policy"...)
 lowers intent_heuristic hits instead. In proxy.py, the classifier call goes through the gateway on the
 free model when it has room (else once on the fallback; FIREWALL_INTENT_MODEL overrides) and is logged
 as user/agent "firewall", session "firewall-intent". Keep the optional grounding layer (approval
