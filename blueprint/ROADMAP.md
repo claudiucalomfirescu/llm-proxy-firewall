@@ -18,8 +18,8 @@ Status: ✅ done · 🔜 in progress · ⏳ planned · 💤 parked
 ## Next
 - Port the evaluation harness (replay a recorded log through the firewall, score against labels) so
   policy changes are measured, not guessed.
-- Tune the classifier prompt on the demo week: the LLM raised four of the risky requests from warning
-  to block that evening (see D-010), which is defensible but strict.
+- Tune the classifier prompt on the demo week: in both recordings the judge raised the bulk export and
+  the API-key request from warning to block (D-120, D-121). That follows the intent text, but is strict.
 - Notifications: a webhook on `block_session`.
 
 ## Ideas, not commitments

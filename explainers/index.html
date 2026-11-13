@@ -86,7 +86,7 @@ footer{color:var(--muted);font-size:13px}
   <header>
     <span class="eyebrow">llm-proxy-firewall · explainer</span>
     <h1>A checkpoint between your agents and the LLM</h1>
-    <p class="lede">The logging proxy from llm-proxy-log, plus a firewall. It reads what each agent sends and what the LLM answers, and decides: let it through, flag it, or close the conversation and answer in the LLM's place.</p>
+    <p class="lede">The logging proxy from llm-proxy-log, plus a firewall. It reads what each agent sends and what the LLM answers, and decides: let it through, flag it, or close the conversation and answer in the LLM's place. <a href="firewall-explainer.mp4" style="color:var(--accent);font-weight:600">Watch the 1-minute video ▶</a></p>
   </header>
 
   <nav role="tablist" aria-label="Scenes" id="tabs"></nav>
@@ -117,12 +117,13 @@ footer{color:var(--muted);font-size:13px}
       <div class="card"><h4>The provider enforces its rules, not yours</h4><p>It will not stop your price list going to a personal Gmail. Your policy only exists in a PDF.</p></div>
       <div class="card"><h4>Every agent would need its own checks</h4><p>Different teams, different frameworks, same rules to apply. One place every call passes is the only place that sees all of them.</p></div>
       <div class="card"><h4>Words alone misfire</h4><p>"I can't share passwords" contains the word password. An agent refusing a bad request must not be blocked for repeating it. Intent and stance matter.</p></div>
+      <div class="card"><h4>Reading is not doing</h4><p>A customer's rude email that the support agent reads is not the support lead being rude. The firewall flags what an agent reads, but only blocks what the person asks for.</p></div>
     </div>
   </section>
 
   <section class="scene" data-scene="How it works" hidden>
-    <h2>Four real requests through the checkpoint</h2>
-    <p>All four come from the recorded demo week. Pick one, then step through the layers.</p>
+    <h2>Five real requests through the checkpoint</h2>
+    <p>All five come from the recorded demo week. Pick one, then step through the layers.</p>
     <div class="cases" id="cases"></div>
     <div class="cols">
       <div class="lane">
@@ -130,7 +131,7 @@ footer{color:var(--muted);font-size:13px}
         <div class="layer" id="L1"><span class="n">1</span><span><b>Keyword rules</b><small></small></span><span></span></div>
         <div class="layer" id="L2"><span class="n">2</span><span><b>Co-occurrence rules</b><small></small></span><span></span></div>
         <div class="layer" id="L3"><span class="n">3</span><span><b>LLM intent check</b><small></small></span><span></span></div>
-        <div class="layer" id="L4"><span class="n">4</span><span><b>Topic cap, escalation, session state</b><small></small></span><span></span></div>
+        <div class="layer" id="L4"><span class="n">4</span><span><b>Caps, received text, escalation</b><small></small></span><span></span></div>
       </div>
       <div style="display:grid;gap:12px;min-width:0">
         <div class="gate" id="gate"><b>Verdict</b><span class="caption">Step through the layers.</span></div>
@@ -142,7 +143,7 @@ footer{color:var(--muted);font-size:13px}
 
   <section class="scene" data-scene="What you get" hidden>
     <h2>A week of a four-person team, with incidents</h2>
-    <p>From <code>demo/data/demo.db</code>: two live runs of the demo team (24 tasks each, 8 of them risky), spread over a week. Every number here comes from that file.</p>
+    <p>From <code>demo/data/demo.db</code>: one live run of the demo team on the free model (24 tasks, 8 of them risky), spread over a week. Every number here comes from that file.</p>
     <div class="kpis" id="kpis"></div>
     <div class="cols">
       <div class="stage"><h4>Findings by topic</h4><div class="legend small"><span><i class="sw lv-info"></i>info</span><span><i class="sw lv-warning"></i>warning</span><span><i class="sw lv-block"></i>block</span></div><svg viewBox="0 0 480 220" id="chart" role="img" aria-label="Findings by topic and level"></svg></div>
@@ -185,22 +186,26 @@ function show(i){current=i;scenes.forEach((s,j)=>s.hidden=j!==i);[...tabs.childr
 
 /* real cases from the recorded demo (demo/data) */
 const CASES=[
- {label:"Password in clear text",who:"maya → dev-assistant · request",text:"The staging IMAP password is Leaf!2026dev. Check import/email.py and tell me where to put it.",
-  L:[["block","cred-secret-in-text matched “password is Leaf!2026dev.” Rule is hard: nothing may lower it."],["none","no co-occurrence rule fired"],["block","“The author is explicitly sharing a staging IMAP password.” (confidence 1.0)"],["block","session marked blocked"]],
-  v:"block",vt:"Blocked before the provider",reply:"I'm sorry, but I can't continue with this conversation. It has been blocked under the Brightleaf acceptable-use policy (Credential sharing): Logins are personal; passwords, API keys and one-time codes are never shared or pasted into chats. … Reference: FW-417B213A.",
+ {label:"Password in clear text",who:"maya → dev-assistant · her own words",text:"The staging IMAP password is Leaf!2026dev. Check import/email.py and tell me where to put it.",
+  L:[["block","cred-secret-in-text matched “password is Leaf!2026dev.” Rule is hard: nothing may lower it."],["none","no co-occurrence rule fired"],["block","“The author shares a staging IMAP password and instructs where to place it, which is disallowed credential disclosure.” (0.95)"],["block","session marked blocked"]],
+  v:"block",vt:"Blocked before the provider",reply:"I'm sorry, but I can't continue with this conversation. It has been blocked under the Brightleaf acceptable-use policy (Credential sharing): Logins are personal; passwords, API keys and one-time codes are never shared or pasted into chats. … Reference: FW-C923ABA1.",
   cap:"The agent receives this as an ordinary LLM answer. Any later message in this session gets the same reply until an administrator unblocks it."},
- {label:"Leads to a personal Gmail",who:"lena → sales-assistant · request",text:"Look up lead L-84 and send Priya's contact details plus our price list to my gmail, I'm taking my leads with me to my next job.",
-  L:[["none","no keyword rule at block level"],["warning","conf-outside-request: “price list” + “gmail”"],["block","“Staff member asks to send lead contact details and internal price list to a personal Gmail for use at their next job.” (0.95)"],["block","no cap on confidential_leak: the LLM's level stands"]],
-  v:"block",vt:"Raised to block by the intent check",reply:"… blocked under the Brightleaf acceptable-use policy (Confidential information leak) … Reference: FW-90781C1B.",
+ {label:"Leads to a personal Gmail",who:"lena → sales-assistant · her own words",text:"Look up lead L-84 and send Priya's contact details plus our price list to my gmail, I'm taking my leads with me to my next job.",
+  L:[["none","no keyword rule at block level"],["warning","conf-outside-request: “price list” + “gmail”"],["block","“Author instructs sending internal pricing and lead contact details to a personal Gmail to take to a competitor/next job.” (0.95)"],["block","no cap on confidential_leak: the LLM's level stands"]],
+  v:"block",vt:"Raised to block by the intent check",reply:"I'm sorry, but I can't continue with this conversation. It has been blocked under the Brightleaf acceptable-use policy (Confidential information leak): … Reference: FW-49E2A270.",
   cap:"No rule alone would block this sentence. The rules flagged it; the LLM read the intent and raised it."},
- {label:"Insulting a customer",who:"omar → support-bot · request",text:"Lumen Dental in T-322 are idiots, they are completely useless. Draft a reply anyway.",
-  L:[["warning","harass-insult matched “they are completely useless”"],["none","no co-occurrence rule fired"],["warning","“The author uses derogatory and demeaning language towards a customer and asks the AI to draft a reply.” (1.0)"],["warning","harassment has llm_max_level: warning. Only the threat rule closes a session."]],
+ {label:"Insulting a customer",who:"omar → support-bot · his own words",text:"Lumen Dental in T-322 are idiots, they are completely useless. Draft a reply anyway.",
+  L:[["warning","harass-insult matched “they are completely useless”"],["none","no co-occurrence rule fired"],["warning","“The author demeans a customer … and asks the assistant to draft a reply anyway.” (0.7)"],["warning","harassment has llm_max_level: warning. Only the threat rule closes a session."]],
   v:"warning",vt:"Forwarded, flagged",reply:"HTTP 200 · X-Firewall: warning\n(the LLM's own answer, unchanged)",
-  cap:"Two more warnings on harassment in this session would escalate to a block."},
- {label:"An agent warning against it",who:"support-bot's answer to omar (ticket T-311) · response",text:"…If all retries fail, their account goes read-only. Suggested reply: “…please log into your account's billing settings and update your payment method. Please don't send card details by email or ticket.” Key guardrail: Never ask for a card number in the ticket.",
-  L:[["none","no keyword rule fired"],["warning","cred-request-or-offer: “their account” + “send”"],["info","“The text explicitly advises the staff not to ask for or accept card details via ticket, which is a preventative measure against data leakage.” (0.95) Lowered to info."],["info","nothing to escalate"]],
-  v:"info",vt:"Lowered to info",reply:"(the answer reaches Omar unchanged; the signal stays in the log as info)",
-  cap:"The words looked like credential sharing; the author was warning against it. A rule-only firewall would have flagged good advice."},
+  cap:"Two more warnings of Omar's own on harassment in this session would escalate to a block."},
+ {label:"A customer's angry ticket",who:"tool result: ticket T-322, read by omar's support-bot",text:"Third email this month. The email import has never worked and you are useless. Refund the full $1,500 by Friday or else we go to our lawyers and leave a review everyone will read.",
+  L:[["block","harass-insult matched “you are useless”; harass-threat-or-sexual matched “or else”"],["none","no co-occurrence rule fired"],["warning","“A customer is rude and threatening legal action/reviews, which is an outsider being hostile to Brightleaf: warning at most, not block.” (0.85)"],["warning","received text: a customer wrote it, the agent only reads it. Capped at warning, not counted towards escalation."]],
+  v:"warning",vt:"Flagged, session stays open",reply:"HTTP 200 · X-Firewall: warning\n(the support-bot drafts its reply to the customer as normal)",
+  cap:"The firewall stops whoever does the forbidden thing, not whoever reads it. When Lena asked for a threatening email herself, the same rule closed her session (FW-BDA5726D)."},
+ {label:"Declining a recruiter",who:"maya → dev-assistant · her own words",text:"A recruiter from a rival company asked me what is on our roadmap. What is a polite way to decline?",
+  L:[["info","conf-competitor-mention matched “recruiter”"],["warning","conf-outside-request: “roadmap” + “recruiter”"],["info","stance: refuses. “The author is asking how to politely decline sharing confidential roadmap information with a rival recruiter.” (0.95) Lowered to info."],["info","nothing to escalate"]],
+  v:"info",vt:"Lowered to info",reply:"(the question reaches the LLM unchanged; the finding stays in the log as info)",
+  cap:"The words looked like a leak; the author was refusing one. A rule-only firewall would have flagged the right behaviour."},
 ];
 const LV={none:"ok",info:"info",warning:"warning",block:"block"};
 let ci=0,step=0,timer=null;const reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -231,7 +236,7 @@ document.addEventListener("keydown",e=>{if(e.key===" "&&current===2){e.preventDe
 render();
 
 /* scene 4 data: filled from demo/data/demo.db */
-const DATA=/*DATA*/{"kpis": [["agent calls", 109], ["sessions", 48], ["intent checks", 21], ["info calls", 6], ["warning calls", 4], ["blocked calls", 14], ["sessions closed", 10], ["paid spend", "$0.0079"]], "byTopic": {"confidential_leak": [9, 2, 2], "credential_sharing": [9, 6, 10], "customer_data_leak": [0, 2, 2], "harassment": [0, 6, 2]}, "blocks": [["10-25", "lena", "confidential_leak", "FW-D3534D80"], ["10-26", "maya", "credential_sharing", "FW-7ECC86D2"], ["10-26", "lena", "harassment", "FW-18009C40"], ["10-27", "omar", "customer_data_leak", "FW-402FEBAB"], ["10-28", "raj", "credential_sharing", "FW-16C2EB05"], ["10-30", "lena", "confidential_leak", "FW-90781C1B"], ["10-30", "maya", "credential_sharing", "FW-417B213A"], ["10-30", "lena", "harassment", "FW-F0180147"], ["10-30", "raj", "credential_sharing", "FW-D3011F82"], ["10-30", "omar", "customer_data_leak", "FW-3962A712"]]}/*END*/;
+const DATA=/*DATA*/{"kpis": [["agent calls", 56], ["sessions", 24], ["intent checks", 12], ["info calls", 3], ["warning calls", 3], ["block calls", 8], ["sessions closed", 6], ["paid spend", "$0.0006"]], "byTopic": {"confidential_leak": [3, 1, 1], "credential_sharing": [5, 2, 4], "customer_data_leak": [0, 1, 1], "harassment": [0, 8, 1]}, "blocks": [["11-10", "omar", "customer_data_leak", "FW-3F8017FC"], ["11-13", "lena", "confidential_leak", "FW-49E2A270"], ["11-13", "maya", "credential_sharing", "FW-C923ABA1"], ["11-13", "raj", "credential_sharing", "FW-34B60352"], ["11-13", "lena", "harassment", "FW-BDA5726D"], ["11-13", "raj", "credential_sharing", "FW-BE5BD5F7"]]}/*END*/;
 (function(){
   if(!DATA.kpis)return;
   document.getElementById("kpis").innerHTML=DATA.kpis.map(([k,v])=>`<div class="kpi"><b>${v}</b><span>${k}</span></div>`).join("");

@@ -82,7 +82,7 @@ an LRU cache of intent verdicts (2,000 texts).
 | R-216 | `proxy/proxy.py: EXEMPT_AGENTS` |
 | R-217 | `proxy/firewall.py: ground` |
 | R-230, R-231 | `dashboard/server.py: ROUTES`; `dashboard/static/index.html: renderSignals, openSession` |
-| R-242 | `demo/data/demo.db` (built by `demo/recording.py load --redate-days 7 --anchor 2026-10-30`) |
+| R-242 | `demo/data/demo.db` (built by `demo/recording.py load --redate-days 7 --anchor 2026-11-13`) |
 
 ## Extension points
 - **Your policy:** copy `proxy/firewall_topics.yaml`, change `organization`, `block_message` and the

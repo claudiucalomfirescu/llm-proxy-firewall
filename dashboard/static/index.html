@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LLM proxy log</title>
+<title>llm-proxy-firewall</title>
 <style>
 :root{--bg:#f6f7f9;--panel:#fff;--ink:#1d232b;--muted:#5f6b7a;--line:#e1e5ea;--accent:#2f6fde;--ok:#1f8a5b;--warn:#c27c0e;--bad:#c63b3b;--info:#3b7fc6;
 --s1:#2f6fde;--s2:#1f8a5b;--s3:#c27c0e;--s4:#8b4fc7;--s5:#d0517f;--s6:#2a9aa8;--code:#f0f2f5}
@@ -46,7 +46,7 @@ svg text{fill:var(--muted);font-size:11px}
 </head>
 <body>
 <header>
-  <h1>LLM proxy log</h1><span class="sub" id="source"></span>
+  <h1>llm-proxy-firewall</h1><span class="sub" id="source"></span>
   <div class="filter"><label for="userSel">User</label><select id="userSel"><option value="">everyone</option></select>
   <button id="reload" title="Read the log again">Reload</button></div>
 </header>
@@ -125,7 +125,7 @@ function renderUsers() {
   const list = [...by.values()].sort((a, b) => b.calls - a.calls);
   $("userTable").innerHTML = `<tr><th>user</th><th>dept</th><th class="num">sessions</th><th class="num">calls</th><th class="num">tokens</th>${signals ? '<th class="num">flagged</th>' : ""}</tr>` +
     list.map(u => `<tr class="click ${u.user === selUser ? "sel" : ""}" data-u="${esc(u.user)}"><td><span class="dot" style="background:${colors[u.user]}"></span>${esc(u.user)}</td>
-      <td>${esc(u.dept || "")}</td><td class="num">${u.sessions.size}</td><td class="num">${fmt(u.calls)}</td><td class="num">${fmt(u.tokens)}</td>${signals ? `<td class="num">${u.flagged || ""}</td>` : ""}</tr>`).join("");
+      <td>${esc(u.dept || (u.user === "firewall" ? "the firewall's intent checks" : ""))}</td><td class="num">${u.sessions.size}</td><td class="num">${fmt(u.calls)}</td><td class="num">${fmt(u.tokens)}</td>${signals ? `<td class="num">${u.flagged || ""}</td>` : ""}</tr>`).join("");
   document.querySelectorAll("#userTable tr.click").forEach(tr => tr.onclick = () => { selUser = selUser === tr.dataset.u ? "" : tr.dataset.u; $("userSel").value = selUser; render(); });
 }
 

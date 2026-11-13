@@ -220,7 +220,7 @@ Environment: `OPENROUTER_API_KEY` (required), `UPSTREAM_BASE_URL` (default
 ### Demo data
 - `demo/data/team-week.json`: `{"calls": [...], "signals": [...], "admin_actions": [...]}`; calls keep their original `id`, the other rows point at it with `call_id`.
 - `demo/data/demo.db`: the same rows in a K-log-schema@2 file, sessions spread over the 7 days ending
-  2026-10-30 (label `"redated": true`). This file is the fixture llm-session-console tests against.
+  2026-11-13 (label `"redated": true`). This file is the fixture llm-session-console tests against.
 
 ### Contracts we depend on
 | Contract | Owner | What we rely on |

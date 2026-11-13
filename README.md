@@ -25,7 +25,7 @@ llm-proxy-firewall is the logging proxy plus a firewall that reads every request
 against a YAML policy, flags what looks wrong, and blocks a breach before it reaches the provider,
 answering the agent in the LLM's place.
 
-**Animated explainer:** [explainers/index.html](explainers/index.html) · [published](https://claude.ai/artifact/9B6TSTeeKKVG2z3yT3fYYN)
+**Watch:** [the 1-minute video](explainers/firewall-explainer.mp4) · **Explore:** [animated explainer](explainers/index.html) ([published](https://claude.ai/artifact/9B6TSTeeKKVG2z3yT3fYYN))
 
 ## What it is
 Everything [llm-proxy-log](https://github.com/claudiucalomfirescu/llm-proxy-log/blob/main/) does (agents change only their base URL; the proxy
@@ -39,6 +39,15 @@ what the agent sends and what the LLM answers, against a policy written in YAML:
 
 Rules catch the words; an LLM classifier, asked only when a rule fired, judges the intent and who is
 doing what (asking, refusing, reporting). Every finding is stored with its reason.
+
+### Who wrote it matters
+The firewall stops whoever does the forbidden thing, not whoever reads it. A request is checked in two
+parts: what the person typed, and what the agent is reading (tool results: a ticket, an email, a web
+page). When a customer writes *"refund us by Friday or else"* in a ticket, the support lead's session
+gets a **warning**, not a closed session. When a member of staff asks for *"a threatening email"*,
+the session is **blocked**. Received text only blocks through a `hard` rule (a password or card
+number pasted in clear text leaks whoever wrote it), and its warnings never add up to an escalation.
+If the agent then acts on what it read, the answer side sees that act.
 
 ## 60-second quickstart (no API key)
 ```bash
@@ -74,7 +83,9 @@ flowchart LR
 ```
 - Layers, cheapest first: keyword rules, co-occurrence rules, an LLM intent check (only when a rule
   fired), an optional grounding check for "the manager approved it" claims.
-- Three warnings on one topic in one session escalate to a block.
+- The judge runs on the free `nvidia/nemotron-3.5-super-vl:free` (about 1 s), and on a cheap paid model
+  only when the free minute is full. Change it with `FIREWALL_INTENT_MODEL`.
+- Three warnings on one topic in one session escalate to a block (the person's own warnings only).
 - Blocks survive restarts; admins block, unblock and note through HTTP routes.
 - Schema K-log-schema@2 = llm-proxy-log's `calls` + `signals` + `admin_actions` ([SPEC.md](blueprint/SPEC.md)).
 - Details: [ARCHITECTURE.md](blueprint/ARCHITECTURE.md). Walkthrough: [demo/DEMO.md](demo/DEMO.md).
